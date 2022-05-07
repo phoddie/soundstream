@@ -20,5 +20,16 @@
 		"audioOut": {
 			"queueLength": 24
 		}
+	},
+	"platforms": {
+		"mac": {
+			"defines": {
+				"audioOut": {
+					"bitsPerSample": 16,
+					"numChannels": 1,
+					"sampleRate": 11025
+				}
+			}
+		}
 	}
 }

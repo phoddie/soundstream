@@ -1,0 +1,33 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json"
+	],
+	"modules": {
+		"*": [
+			"./main",
+			"../calculatePower"
+		],
+		"pins/*": [
+			"$(MODULES)/pins/i2s/*"
+		]
+	},
+	"resources": {
+		"*": "../voice_samples/googletts_16bit_mono_11025hz"
+	},
+	"defines": {
+		"audioOut": {
+			"queueLength": 24
+		}
+	},
+	"platforms": {
+		"mac": {
+			"defines": {
+				"audioOut": {
+					"bitsPerSample": 16,
+					"numChannels": 1,
+					"sampleRate": 11025
+				}
+			}
+		}
+	}
+}

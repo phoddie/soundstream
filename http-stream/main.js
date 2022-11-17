@@ -1,97 +1,49 @@
 /*
-	Streaming from http
-	
-		uses Ecma-419 HTTPClient implementation (much better for streaming)
-		collects received audio into fixed size block (bytesPerBlock)
-		tries to top-up queue after audio buffer played and when new network data received
-		audio queue target is one second of audio
-		calcuates RMS of each block after dequeuing
-
-	To do
-
-		handle network stalls (stop, fill buffer, start)
-		queue last audio fragment (next.position) 
-		skip WAV header
-	
-*/
+ * Copyright (c) 2022  Moddable Tech, Inc.
+ *
+ *   This file is part of the Moddable SDK.
+ * 
+ *   This work is licensed under the
+ *       Creative Commons Attribution 4.0 International License.
+ *   To view a copy of this license, visit
+ *       <http://creativecommons.org/licenses/by/4.0>.
+ *   or send a letter to Creative Commons, PO Box 1866,
+ *   Mountain View, CA 94042, USA.
+ *
+ */
 
 import AudioOut from "pins/audioout"
-import HTTPRequest from "embedded:network/http/request";
-
-const http = new HTTPRequest({
-//	host: "localhost",
-	host: "10.0.1.11"
-});
-const request = http.request({
-	path: "/googletts_16bit_mono_11025hz.wav",
-	onHeaders(status, headers) {
-		if (2 !== Math.idiv(status, 100))
-			trace("http request failed\n");
-	},
-	onReadable(count) {
-		this.readable = count;
-		fillQueue();
-	},
-	onDone() {
-		//@@ queue .next
-		audio.enqueue(0, AudioOut.Callback, 0);
-	}
-});
-
-const sampleRate = 11025;
-const bytesPerSample = 2;
-const targetBytesQueued = sampleRate * bytesPerSample;
-const bytesPerBlock = Math.idiv(targetBytesQueued, 8);
-if (bytesPerBlock % bytesPerSample)
-	throw new Error("invalid bytesPerBlock")
-let bytesQueued = 0; 
-
-const audio = new AudioOut({});
-audio.playing = [];
-audio.stopped = true;
-
-audio.callback = function(bytes) {
-	if (!bytes) {
-		trace('...done\n');
-		return;
-	}
-	bytesQueued -= bytes;
-	const played = this.playing.shift();
-	const power = calculatePower(played);
-	trace("power " + Math.round(power) + "\n");
-	fillQueue();
-};
-audio.start();
-
-function fillQueue() {
-	while ((bytesQueued < targetBytesQueued) &&
-			request.readable &&
-			(audio.length(0) >= 2)) {
-		let next = audio.next;
-		if (!next) {
-			audio.next = next = new Uint8Array(new SharedArrayBuffer(bytesPerBlock));
-			next.position = 0;
-		}
-
-		const use = Math.min(next.byteLength - next.position, request.readable);
-		const slice = request.read(use);
-		request.readable -= use;
-
-		next.set(new Uint8Array(slice), next.position);
-		next.position += use;
-		if (next.position === next.byteLength) {		//@@ or end of stream
-			audio.enqueue(0, AudioOut.RawSamples, next.buffer, 1, 0, next.byteLength / bytesPerSample);
-			audio.enqueue(0, AudioOut.Callback, next.byteLength);
-			bytesQueued += next.byteLength;
-			audio.playing.push(next);
-			delete audio.next;
-		}
-	}
-
-	if (audio.stopped && (bytesQueued >= targetBytesQueued)) {
-		audio.start();
-		audio.stopped = false;
-	}
-}
+import WavStreamer from "wavstreamer";
 
 function calculatePower(samplea) @ "xs_calculatePower";
+
+const audio = new AudioOut({});
+
+new WavStreamer({
+	http: device.network.http,
+//	host: "localhost",
+	host: "10.0.1.21",
+	path: "/googletts_16bit_mono_11025hz.wav",
+	audio: {
+		out: audio,
+		stream: 0,
+		sampleRate: 11025
+	},
+	onPlayed(buffer) {
+		const power = calculatePower(buffer);
+		trace("power " + Math.round(power) + "\n");
+	},
+	onReady(state) {
+		trace(`Ready: ${state}\n`);
+		if (state)
+			audio.start();
+		else
+			audio.stop();
+	},
+	onError(x) {
+		trace("ERROR: ", e, "\n");
+	},
+	onDone() {
+		trace("DONE\n");
+	}
+});

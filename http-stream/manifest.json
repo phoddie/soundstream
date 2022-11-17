@@ -1,20 +1,22 @@
 {
 	"include": [
 		"$(MODDABLE)/examples/manifest_base.json",
-		"$(MODDABLE)/modules/io/manifest.json"
+		"$(MODDABLE)/modules/io/manifest.json",
+		"$(MODDABLE)/examples/io/tcp/httpclient/manifest_httpclient.json",
+		"$(MODDABLE)/modules/data/wavreader//manifest.json"
 	],
 	"modules": {
 		"*": [
 			"./main",
+			"./wavstreamer",
 			"../calculatePower"
 		],
 		"pins/*": [
 			"$(MODULES)/pins/i2s/*"
-		],
-		"embedded:network/http/request": "$(MODDABLE)/examples/io/tcp/httpclient/httpclient"
+		]
 	},
 	"preload": [
-		"embedded:network/http/request"
+		"wavstreamer"
 	],
 	"defines": {
 		"audioOut": {

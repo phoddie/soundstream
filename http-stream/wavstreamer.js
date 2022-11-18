@@ -148,10 +148,8 @@ class WavStreamer {
 			}
 
 			const use = Math.min(next.byteLength - next.position, this.#request.readable);
-			const slice = this.#request.read(use);
+			this.#request.read(next.subarray(next.position, next.position + use));
 			this.#request.readable -= use;
-
-			next.set(new Uint8Array(slice), next.position);
 			next.position += use;
 			this.#bytes -= use;
 			if ((next.position === next.byteLength) || !this.#bytes) {

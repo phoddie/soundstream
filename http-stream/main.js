@@ -40,7 +40,7 @@ new WavStreamer({
 		else
 			audio.stop();
 	},
-	onError(x) {
+	onError(e) {
 		trace("ERROR: ", e, "\n");
 	},
 	onDone() {

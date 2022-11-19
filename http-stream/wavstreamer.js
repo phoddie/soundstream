@@ -70,8 +70,12 @@ class WavStreamer {
 		this.#request = this.#http.request({
 			path: options.path,
 			onHeaders: (status, headers) => {
-				if (2 !== Math.idiv(status, 100))
+				if (2 !== Math.idiv(status, 100)) {
 					this.#callbacks.onError?.("http request failed, status " + status);
+					this.#http.close();
+					this.#http = this.#request = undefined;
+					return;
+				}
 			},
 			onReadable: (count) => {
 				this.#request.readable = count;
@@ -81,12 +85,19 @@ class WavStreamer {
 
 					const buffer = this.#request.read(waveHeaderBytes);
 					const wav = new WavReader(buffer);
+					let error;
 					if (1 !== wav.audioFormat)
-						throw new Error("unsupported format");
-					if (sampleRate !== wav.sampleRate)
-						throw new Error("incompatble sampleRate");
-					if (16 !== wav.bitsPerSample)
-						throw new Error("incompatible bitsPerSample");
+						error = "unsupported format";
+					else if (sampleRate !== wav.sampleRate)
+						error = "incompatble sampleRate";
+					else if (16 !== wav.bitsPerSample)
+						error = "incompatible bitsPerSample";
+					if (error) {
+						this.#callbacks.onError?.("invalid WAV: " + error);
+						this.#http.close();
+						this.#http = this.#request = undefined;
+						return;
+					}
 
 					this.#ready = false;	
 

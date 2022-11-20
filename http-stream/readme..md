@@ -1,8 +1,8 @@
 # WavStream
 Copyright 2022 Moddable Tech, Inc.<BR>
-Revised: November 17, 2022
+Revised: November 20, 2022
 
-The `WavStream` class plays an uncompressed WAV audio file streamed over HTTP. It uses the following modules:
+The `WavStream` class plays an uncompressed WAV audio files and Audio/L16 streams delivered over HTTP. It uses the following modules:
 
 - `HTTPClient` from ECMA-419 2nd Edition (draft). The API design of the HTTP request makes buffering of streaming data very straightforward.
 - `AudioOut` class for audio playback
@@ -36,6 +36,19 @@ The `WavStream` tries to keep about one second of audio buffers queued with the 
 
 The `HTTPClient` does not yet implement `TLS`. When it does, `WavStream` will support streaming over HTTPS.
 
+### `Audio/L16` Streams
+Uncompressed audio streams are the data portion of a WAVE file with the sample rate and channel count specified in the MIME type. These are useful for live-streaming of uncompressed audio, and is also used for live transcoding of compressed data to lightweight clients. It is specified by [RFC 2586](https://datatracker.ietf.org/doc/html/rfc2586). The data is delivered in network byte order (big-endian). The WaveStreamer implementation converts it to little-endian for playback.
+
+The following command line allows ffmpeg to act as simple server for testing Audio/L16 streaming.
+
+```
+ffmpeg -i bflatmajor.wav -listen 1 -content_type "audio/L16;rate=11025&channels=2" -f s16be -ar 11025 -acodec pcm_s16be http://127.0.0.1:8080
+```
+
+### Stereo Streams
+`WavStream` accepts stereo data and converts mixes it to mono for playback. This is provided for compatibility with existing audio sources as it is clearly not an optimal use of network bandwidth.
+
+
 ## API reference
 
 ### `constructor(options)`
@@ -44,6 +57,7 @@ The options object may contain the following properties. Only the `http`, `host`
 
 - `http` - the HTTP client configuration. This usually comes from the host provider at `device.network.http`
 - `host` - the HTTP host to connect to stream from
+- `port` - the remote port to connect to
 - `path` - the path of the HTTP resource to review
 - `audio.out` - the audio output instance to play the audio on
 - `audio.sampleRate` - the expected sample rate of the WAV file

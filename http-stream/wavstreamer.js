@@ -25,10 +25,11 @@
 		collects received audio into fixed size block (bytesPerBlock)
 		tries to top-up queue after audio buffer played and when new network data received
 		audio queue target is one second of audio
-		calcuates RMS of each block after dequeuing
 */
 
 import WavReader from "data/wavreader";
+
+const bytesPerSample = 2;
 
 class WavStreamer {
 	#audio;
@@ -38,13 +39,15 @@ class WavStreamer {
 	#playing = [];
 	#ready;		// undefined while initializing, false if not buffered / playing, true if buffers full to play / playing
 	#next;
-	#bytes = 0;		// remaining in stream
+	#bytes = Infinity;		// remaining in stream
 	#bytesQueued = 0;
 	#targetBytesQueued;
 	#bytesPerSample = 2;
 	#bytesPerBlock;
 	#callbacks = [];
 	#pending = [];
+	#swap;		// endian swap
+	#channels;	// 1 or 2
 
 	constructor(options) {
 		const waveHeaderBytes = options.waveHeaderBytes ?? 512;
@@ -63,10 +66,13 @@ class WavStreamer {
 		if (options.onDone)
 			this.#callbacks.onDone = options.onDone;
 
-		this.#http = new options.http.io({
+		const o = {
 			...options.http,
 			host: options.host
-		});
+		};
+		if (options.port)
+			o.port = options.port; 
+		this.#http = new options.http.io(o);
 		this.#request = this.#http.request({
 			path: options.path,
 			onHeaders: (status, headers) => {
@@ -75,6 +81,33 @@ class WavStreamer {
 					this.#http.close();
 					this.#http = this.#request = undefined;
 					return;
+				}
+				
+				let mime = headers.get("content-type");
+				if (mime?.toLowerCase().startsWith("audio/l16;")) {
+					let channels = 1, rate;
+					mime = mime.substring(10).split("&");
+					for (let i = 0; i < mime.length; i++) {
+						const part = mime[i];
+						if (part.startsWith("rate="))
+							rate = parseInt(part.substring(5));
+						else if (part.startsWith("channels="))
+							channels = parseInt(part.substring(9));
+					}
+					if (sampleRate !== rate) {
+						this.#callbacks.onError?.("invalid audio/L16");
+						this.#http.close();
+						this.#http = this.#request = undefined;
+						return;
+					}
+
+					let length = headers.get("content-length");
+					if (length)
+						this.#bytes = parseInt(length);
+
+					this.#ready = false;	
+					this.#swap = WavStreamer.swap;
+					this.#channels = channels;
 				}
 			},
 			onReadable: (count) => {
@@ -87,11 +120,13 @@ class WavStreamer {
 					const wav = new WavReader(buffer);
 					let error;
 					if (1 !== wav.audioFormat)
-						error = "unsupported format";
+						error = "format";
 					else if (sampleRate !== wav.sampleRate)
-						error = "incompatble sampleRate";
+						error = "sampleRate";
 					else if (16 !== wav.bitsPerSample)
-						error = "incompatible bitsPerSample";
+						error = "bitsPerSample";
+					else if ((1 !== wav.numChannels) && (2 !== wav.numChannels))
+						error = "channels";
 					if (error) {
 						this.#callbacks.onError?.("invalid WAV: " + error);
 						this.#http.close();
@@ -99,10 +134,11 @@ class WavStreamer {
 						return;
 					}
 
+					this.#channels = wav.numChannels;
 					this.#ready = false;	
 
 					this.#request.readable -= waveHeaderBytes;
-					this.#next = new Uint8Array(new SharedArrayBuffer(this.#bytesPerBlock));
+					this.#next = new Uint8Array(new SharedArrayBuffer(this.#bytesPerBlock * this.#channels));
 					this.#next.set(new Uint8Array(buffer, wav.position));
 					this.#next.position = waveHeaderBytes - wav.position;
 
@@ -111,6 +147,8 @@ class WavStreamer {
 				this.#fillQueue();
 			},
 			onDone: () => {
+				this.#targetBytesQueued = this.#bytesPerBlock;
+				this.#fillQueue();
 				this.#audio.enqueue(this.#stream, this.#audio.constructor.Callback, 0);
 			},
 			onError: e => {
@@ -154,7 +192,7 @@ class WavStreamer {
 				(this.#audio.length(this.#stream) >= 2)) {
 			let next = this.#next;
 			if (!next) {
-				this.#next = next = new Uint8Array(new SharedArrayBuffer(this.#bytesPerBlock));
+				this.#next = next = new Uint8Array(new SharedArrayBuffer(this.#bytesPerBlock * this.#channels));
 				next.position = 0;
 			}
 
@@ -164,10 +202,17 @@ class WavStreamer {
 			next.position += use;
 			this.#bytes -= use;
 			if ((next.position === next.byteLength) || !this.#bytes) {
+				this.#swap?.(next);
+				if (2 === this.#channels) {
+					next = new Uint8Array(new SharedArrayBuffer(next.position >> 1));
+					WavStreamer.mix(this.#next, next);
+					next.position = this.#next.position >> 1;
+					this.#next = next;
+				}
 				if (this.#pending)
 					this.#pending.push(next);
 				else {
-					this.#audio.enqueue(this.#stream, this.#audio.constructor.RawSamples, next.buffer, 1, 0, next.position / this.#bytesPerSample);
+					this.#audio.enqueue(this.#stream, this.#audio.constructor.RawSamples, next, 1, 0, next.position / this.#bytesPerSample);
 					this.#audio.enqueue(this.#stream, this.#audio.constructor.Callback, next.position);
 					this.#playing.push(next);
 				}
@@ -181,7 +226,7 @@ class WavStreamer {
 
 			while (this.#pending.length) {
 				const next = this.#pending.shift();
-				this.#audio.enqueue(this.#stream, this.#audio.constructor.RawSamples, next.buffer, 1, 0, next.position / this.#bytesPerSample);
+				this.#audio.enqueue(this.#stream, this.#audio.constructor.RawSamples, next, 1, 0, next.position / this.#bytesPerSample);
 				this.#audio.enqueue(this.#stream, this.#audio.constructor.Callback, next.position);
 				this.#playing.push(next);
 			}
@@ -190,6 +235,9 @@ class WavStreamer {
 			this.#callbacks.onReady?.(true);
 		}
 	}
+	
+	static swap(buffer) @ "xs_wavestream_swap";
+	static mix(from, to) @ "xs_wavestream_mix";
 }
 
 export default WavStreamer;

@@ -115,6 +115,10 @@ class SBCStreamer {
 			this.#bytesQueued -= bytes;
 			let played = this.#playing.shift();
 			this.#callbacks.onPlayed?.(played);
+			if (!this.#next && (played.byteLength === (kMAUDHeader + this.#bytesPerBlock))) {
+				played.position = kMAUDHeader;
+				this.#next = played;
+			}
 			played = undefined;
 
 			this.#fillQueue();

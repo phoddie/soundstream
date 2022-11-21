@@ -73,7 +73,7 @@ The options object may contain the following properties. The `http`, `host`, `pa
 - `http` - the HTTP client configuration. This usually comes from the host provider at `device.network.http`
 - `host` - the HTTP host to connect to stream from
 - `port` - the remote port to connect to
-- `path` - the path of the HTTP resource to review
+- `path` - the path of the HTTP resource to stream
 - `audio.out` - the audio output instance to play the audio on
 - `audio.sampleRate` - the expected sample rate of the WAV file
 - `audio.stream` - the stream number of the audio output to use to play the audio. Defaults to `0`.

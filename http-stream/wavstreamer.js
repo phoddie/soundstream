@@ -169,6 +169,10 @@ class WavStreamer {
 			this.#bytesQueued -= bytes;
 			let played = this.#playing.shift();
 			this.#callbacks.onPlayed?.(played);
+			if (!this.#next && (played.byteLength === (this.#bytesPerBlock * this.#channels))) {
+				played.position = 0;
+				this.#next = played;
+			}
 			played = undefined;
 
 			this.#fillQueue();

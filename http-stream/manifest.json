@@ -8,6 +8,7 @@
 	"modules": {
 		"*": [
 			"./main",
+			"./sbcstreamer",
 			"./wavstreamer",
 			"../calculatePower"
 		],
@@ -16,6 +17,7 @@
 		]
 	},
 	"preload": [
+		"sbcstreamer",
 		"wavstreamer"
 	],
 	"defines": {
